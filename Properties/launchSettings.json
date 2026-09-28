@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "TraySport (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "TraySport (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
