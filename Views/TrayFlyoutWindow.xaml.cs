@@ -24,8 +24,8 @@ namespace TraySport.Views;
 /// </summary>
 public sealed partial class TrayFlyoutWindow : WindowEx
 {
-    private const int PopupWidth = 360;
-    private const int PopupHeight = 480;
+    private const int PopupWidth = 380;
+    private const int PopupHeight = 600;
 
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_LAYERED = 0x00080000;
@@ -45,8 +45,15 @@ public sealed partial class TrayFlyoutWindow : WindowEx
 
     private static readonly TimeSpan CloseDelay = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// A tray click within this long of a dismiss returns to the page the user left (they were
+    /// probably mid-search); after it, the click lands on the favorites again.
+    /// </summary>
+    private static readonly TimeSpan KeepPageFor = TimeSpan.FromSeconds(30);
+
     private readonly HWND _hwnd;
-    private readonly FlyoutPage _page = new();
+    private readonly FlyoutPage _page;
+    private readonly Stack<FrameworkElement> _backStack = new();
     private readonly ShellBackdrop _backdrop = new();
     private readonly UISettings _uiSettings = new();
     private readonly DispatcherQueueTimer _hideTimer;
@@ -78,6 +85,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     {
         InitializeComponent();
         _hwnd = (HWND)WindowNative.GetWindowHandle(this);
+        _page = new FlyoutPage(this);
         PageHost.Content = _page;
 
         SystemBackdrop = _backdrop;
@@ -106,6 +114,10 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _animationTimer.Tick += AnimationTimer_Tick;
     }
 
+    public bool IsPopupVisible => _isPopupVisible;
+
+    private FrameworkElement CurrentView => (FrameworkElement)PageHost.Content;
+
     /// <summary>Shows the popup, or hides it if already visible (tray-icon click behavior).</summary>
     public void Toggle()
     {
@@ -120,8 +132,78 @@ public sealed partial class TrayFlyoutWindow : WindowEx
             return;
         }
 
+        ReturnHomeIfStale();
         ShowPopup();
     }
+
+    /// <summary>After a while hidden, the next open starts from the favorites again.</summary>
+    public void ReturnHomeIfStale()
+    {
+        if (!_isPopupVisible && DateTime.UtcNow - _lastDismissedAtUtc > KeepPageFor)
+        {
+            GoHome();
+        }
+    }
+
+    /// <summary>Drills into a page (Find a team, a team, settings), keeping the current one to go back to.</summary>
+    public void Navigate(FrameworkElement view)
+    {
+        FrameworkElement current = CurrentView;
+        (current as IFlyoutView)?.OnHidden();
+        _backStack.Push(current);
+        PageHost.Content = view;
+        if (_isPopupVisible)
+        {
+            (view as IFlyoutView)?.OnShown();
+        }
+    }
+
+    /// <summary>Goes back one page; false when already on the favorites.</summary>
+    public bool GoBack()
+    {
+        if (_backStack.Count == 0)
+        {
+            return false;
+        }
+
+        FrameworkElement leaving = CurrentView;
+        (leaving as IFlyoutView)?.OnHidden();
+        (leaving as IDisposable)?.Dispose();
+        PageHost.Content = _backStack.Pop();
+        if (_isPopupVisible)
+        {
+            (CurrentView as IFlyoutView)?.OnShown();
+        }
+
+        return true;
+    }
+
+    public void GoHome()
+    {
+        while (GoBack())
+        {
+        }
+    }
+
+    public void ShowSettings()
+    {
+        if (CurrentView is not SettingsView)
+        {
+            GoHome();
+            Navigate(new SettingsView(this));
+        }
+    }
+
+    public void ShowFindTeam()
+    {
+        if (CurrentView is not FindTeamView)
+        {
+            GoHome();
+            Navigate(new FindTeamView(this));
+        }
+    }
+
+    public void ShowTeam(TraySport.Core.Models.FavoriteTeam team) => Navigate(new TeamView(this, team));
 
     public void ShowPopup()
     {
@@ -143,7 +225,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         Activate();
         PInvoke.SetForegroundWindow(_hwnd);
 
-        _page.OnShown();
+        (CurrentView as IFlyoutView)?.OnShown();
     }
 
     public void HidePopup()
@@ -158,7 +240,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
 
         _isPopupVisible = false;
         _lastDismissedAtUtc = DateTime.UtcNow;
-        _page.OnHidden();
+        (CurrentView as IFlyoutView)?.OnHidden();
         PlayHideAnimation();
 
         _closeTimer.Stop();
@@ -180,6 +262,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
         _hideTimer.Stop();
         _closeTimer.Stop();
         _animationTimer.Stop();
+        GoHome();
         _page.OnHidden();
         _page.Dispose();
 
@@ -363,6 +446,22 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     private void Escape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        HidePopup();
+        if (!GoBack())
+        {
+            HidePopup();
+        }
+    }
+
+    private void GoBack_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = GoBack();
+    }
+
+    private void PopupRoot_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.GetCurrentPoint(PopupRoot).Properties.IsXButton1Pressed)
+        {
+            e.Handled = GoBack();
+        }
     }
 }

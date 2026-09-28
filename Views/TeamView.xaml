@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="TraySport.Views.TeamView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TraySport.Views">
+
+    <Grid Padding="12,12,12,12" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Header  -->
+        <Grid ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button
+                x:Name="BackButton"
+                AutomationProperties.Name="Back"
+                Click="BackButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Back">
+                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+            </Button>
+            <TextBlock
+                x:Name="TitleText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                TextTrimming="CharacterEllipsis" />
+            <ProgressRing
+                x:Name="LoadingRing"
+                Grid.Column="2"
+                Width="16"
+                Height="16"
+                Margin="8,0"
+                IsActive="False" />
+            <Button
+                x:Name="StarButton"
+                Grid.Column="3"
+                Click="StarButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}">
+                <FontIcon
+                    x:Name="StarIcon"
+                    FontSize="16"
+                    Glyph="&#xE734;" />
+            </Button>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Padding="4,0,12,0">
+            <StackPanel Padding="0,0,0,8" Spacing="4">
+                <!--  Hero  -->
+                <Grid Margin="0,4,0,8" ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="64" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Image
+                        x:Name="BadgeImage"
+                        Width="64"
+                        Height="64"
+                        VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            x:Name="LeagueText"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            TextWrapping="Wrap" />
+                        <TextBlock x:Name="MetaText" Style="{StaticResource SecondaryCaptionTextStyle}" />
+                    </StackPanel>
+                </Grid>
+
+                <InfoBar
+                    x:Name="StatusBar"
+                    IsClosable="False"
+                    IsOpen="False"
+                    Severity="Warning" />
+
+                <TextBlock
+                    x:Name="LastHeader"
+                    Style="{StaticResource SectionHeaderTextStyle}"
+                    Text="Last game"
+                    Visibility="Collapsed" />
+                <local:GameCard x:Name="LastGame" Visibility="Collapsed" />
+
+                <TextBlock
+                    x:Name="NextHeader"
+                    Style="{StaticResource SectionHeaderTextStyle}"
+                    Text="Next game"
+                    Visibility="Collapsed" />
+                <local:GameCard x:Name="NextGame" Visibility="Collapsed" />
+
+                <TextBlock
+                    x:Name="NoGamesText"
+                    Margin="2,8,0,0"
+                    Style="{StaticResource SecondaryCaptionTextStyle}"
+                    Text="No recent or upcoming games."
+                    Visibility="Collapsed" />
+
+                <!--  Standings  -->
+                <StackPanel x:Name="StandingsSection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Standings" />
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <StackPanel Spacing="8">
+                            <Grid x:Name="StandingsGrid" RowSpacing="6" />
+                            <TextBlock x:Name="StandingsNote" Style="{StaticResource SecondaryCaptionTextStyle}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!--  Links  -->
+                <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="Watch and follow" />
+                <Border Padding="4" Style="{StaticResource CardBorderStyle}">
+                    <StackPanel x:Name="LinksPanel" />
+                </Border>
+
+                <!--  About  -->
+                <StackPanel x:Name="AboutSection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}" Text="About" />
+                    <TextBlock
+                        x:Name="AboutText"
+                        MaxLines="5"
+                        TextTrimming="WordEllipsis"
+                        TextWrapping="Wrap" />
+                    <HyperlinkButton
+                        x:Name="MoreButton"
+                        Margin="-10,0,0,0"
+                        Click="MoreButton_Click"
+                        Content="Show more" />
+                </StackPanel>
+
+                <TextBlock
+                    Margin="2,12,0,0"
+                    Style="{StaticResource SecondaryCaptionTextStyle}"
+                    Text="Data from TheSportsDB." />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

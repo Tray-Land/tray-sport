@@ -27,7 +27,6 @@ public partial class App : Application
     private RegisteredWaitHandle? _showWait;
     private TrayIcon? _trayIcon;
     private TrayFlyoutWindow? _flyout;
-    private SettingsWindow? _settings;
     private DispatcherQueue? _dispatcher;
     private bool _isExiting;
 
@@ -102,24 +101,24 @@ public partial class App : Application
     {
         TrayFlyoutWindow flyout = EnsureFlyout();
         flyout.HidePopup();
+        flyout.ReturnHomeIfStale();
         flyout.ShowPopup();
     }
 
-    public void ShowSettings()
-    {
-        _flyout?.HidePopup();
-        if (_settings is null)
-        {
-            _settings = new SettingsWindow();
-            _settings.Closed += (_, _) =>
-            {
-                _settings = null;
-                ReleaseIdleResourcesIfNoWindows();
-            };
-        }
+    /// <summary>Shows the flyout on its settings page (a few settings don't earn their own window).</summary>
+    public void ShowSettings() => ShowFlyoutOn(flyout => flyout.ShowSettings());
 
-        _settings.Activate();
-        _settings.BringToFront();
+    /// <summary>Shows the flyout on the Find a team page.</summary>
+    public void ShowFindTeam() => ShowFlyoutOn(flyout => flyout.ShowFindTeam());
+
+    private void ShowFlyoutOn(Action<TrayFlyoutWindow> navigate)
+    {
+        TrayFlyoutWindow flyout = EnsureFlyout();
+        navigate(flyout);
+        if (!flyout.IsPopupVisible)
+        {
+            flyout.ShowPopup();
+        }
     }
 
     private void InitializeTrayIcon()
@@ -130,23 +129,27 @@ public partial class App : Application
         _trayIcon.IsVisible = true;
         WindowPlacementService.SetTrayIcon(_trayIcon);
         SystemThemeService.Changed += (_, _) => _dispatcher?.TryEnqueue(() => _trayIcon?.SetIcon(TrayIconPath));
+        TrayIconService.Changed += (_, _) => _dispatcher?.TryEnqueue(() => _trayIcon?.SetIcon(TrayIconPath));
+        _ = TrayIconService.RepairAsync();
     }
 
-    // A white glyph disappears on a light taskbar, which follows the Windows theme, not the app theme.
-    private static string TrayIconPath => Path.Combine(
-        AppContext.BaseDirectory, "Assets", SystemThemeService.IsLight ? "AppIcon-dark.ico" : "AppIcon.ico");
+    // The user's sport glyph (white on dark taskbars, black on light ones) or a team's badge.
+    private static string TrayIconPath => TrayIconService.CurrentPath;
 
     private void TrayIcon_ContextMenu(TrayIcon sender, TrayIconEventArgs args)
     {
         MenuFlyout menu = new();
         MenuFlyoutItem open = new() { Text = $"Open {DisplayName}", Icon = new FontIcon { Glyph = "" } };
         open.Click += (_, _) => ShowFlyout();
+        MenuFlyoutItem find = new() { Text = "Find a team", Icon = new FontIcon { Glyph = "" } };
+        find.Click += (_, _) => ShowFindTeam();
         MenuFlyoutItem settings = new() { Text = "Settings", Icon = new FontIcon { Glyph = "" } };
         settings.Click += (_, _) => ShowSettings();
         MenuFlyoutItem exit = new() { Text = "Exit", Icon = new FontIcon { Glyph = "" } };
         exit.Click += (_, _) => ExitApp();
 
         menu.Items.Add(open);
+        menu.Items.Add(find);
         menu.Items.Add(settings);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(exit);
@@ -171,8 +174,9 @@ public partial class App : Application
 
     private void ReleaseIdleResourcesIfNoWindows()
     {
-        if (_flyout is null && _settings is null && !_isExiting)
+        if (_flyout is null && !_isExiting)
         {
+            TeamCatalogService.Unload();
             MemoryService.ReleaseIdle();
         }
     }
@@ -181,7 +185,6 @@ public partial class App : Application
     {
         _isExiting = true;
         _flyout?.CloseWindow();
-        _settings?.Close();
 
         if (_trayIcon is not null)
         {

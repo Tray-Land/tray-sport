@@ -10,10 +10,13 @@ namespace TraySport.Services;
 /// </summary>
 internal static class Secrets
 {
-    private static readonly Lazy<string?> s_exampleApiKey = new(() => GetOAuthString("ExampleApiKey"));
+    private static readonly Lazy<string?> s_sportsDbApiKey = new(() => GetOAuthString("SportsDbApiKey"));
 
-    /// <summary>The example service's API key, or null when OAuth.resw doesn't provide one.</summary>
-    public static string? ExampleApiKey => s_exampleApiKey.Value;
+    /// <summary>
+    /// TheSportsDB key, or null to use the public free key. A premium key lifts the free tier's
+    /// result caps without any other change.
+    /// </summary>
+    public static string? SportsDbApiKey => s_sportsDbApiKey.Value;
 
     private static string? GetOAuthString(string name)
     {

@@ -1,0 +1,9 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g stroke="white">
+<circle cx="512" cy="512" r="418" stroke-width="76"/>
+<path d="M262 178C400 330 400 694 262 846" stroke-width="44"/>
+<path d="M762 178C624 330 624 694 762 846" stroke-width="44"/>
+<path d="M262 178C400 330 400 694 262 846" stroke-width="150" stroke-dasharray="30 78"/>
+<path d="M762 178C624 330 624 694 762 846" stroke-width="150" stroke-dasharray="30 78"/>
+</g>
+</svg>

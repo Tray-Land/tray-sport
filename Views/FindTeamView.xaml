@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="TraySport.Views.FindTeamView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:TraySport.Core.Models"
+    xmlns:local="using:TraySport.Views">
+
+    <Grid Padding="12,12,12,12" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Header  -->
+        <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button
+                x:Name="BackButton"
+                AutomationProperties.Name="Back"
+                Click="BackButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Back">
+                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+            </Button>
+            <TextBlock
+                VerticalAlignment="Center"
+                Style="{StaticResource SubtitleTextBlockStyle}"
+                Text="Find a team" />
+        </StackPanel>
+
+        <!--  Search any team by name  -->
+        <AutoSuggestBox
+            x:Name="SearchBox"
+            Grid.Row="1"
+            Margin="4,0"
+            AutomationProperties.Name="Search teams by name"
+            PlaceholderText="Search by team name"
+            QueryIcon="Find"
+            QuerySubmitted="SearchBox_QuerySubmitted"
+            TextChanged="SearchBox_TextChanged" />
+
+        <!--  Or browse: sport, then league  -->
+        <GridView
+            x:Name="SportPicker"
+            Grid.Row="2"
+            Margin="4,4,0,0"
+            AutomationProperties.Name="Sport"
+            IsItemClickEnabled="False"
+            ScrollViewer.HorizontalScrollMode="Disabled"
+            ScrollViewer.VerticalScrollMode="Disabled"
+            SelectionChanged="SportPicker_SelectionChanged"
+            SelectionMode="Single">
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsWrapGrid MaximumRowsOrColumns="5" Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+            <GridView.ItemContainerStyle>
+                <Style BasedOn="{StaticResource DefaultGridViewItemStyle}" TargetType="GridViewItem">
+                    <Setter Property="Margin" Value="0,0,4,0" />
+                    <Setter Property="MinWidth" Value="0" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="core:SportInfo">
+                    <StackPanel
+                        Width="62"
+                        Height="56"
+                        Padding="0,6,0,4"
+                        AutomationProperties.Name="{x:Bind DisplayName}"
+                        Spacing="2">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            FontFamily="Segoe UI Emoji"
+                            FontSize="20"
+                            Text="{x:Bind Glyph}" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind DisplayName}" />
+                    </StackPanel>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <ComboBox
+            x:Name="LeaguePicker"
+            Grid.Row="3"
+            Margin="4,0"
+            HorizontalAlignment="Stretch"
+            AutomationProperties.Name="League"
+            DisplayMemberPath="Name"
+            SelectionChanged="LeaguePicker_SelectionChanged" />
+
+        <InfoBar
+            x:Name="StatusBar"
+            Grid.Row="4"
+            Margin="4,0"
+            IsClosable="False"
+            IsOpen="False"
+            Severity="Warning" />
+
+        <!--  Teams  -->
+        <Grid Grid.Row="5">
+            <ListView
+                x:Name="TeamsList"
+                IsItemClickEnabled="True"
+                ItemClick="TeamsList_ItemClick"
+                SelectionMode="None">
+                <ListView.ItemContainerStyle>
+                    <Style BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="8,0,4,0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:TeamRow">
+                        <Grid
+                            Padding="0,6"
+                            AutomationProperties.Name="{x:Bind Team.Name}"
+                            ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="32" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Image
+                                Width="32"
+                                Height="32"
+                                Source="{x:Bind Badge}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Team.Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    Style="{StaticResource SecondaryCaptionTextStyle}"
+                                    Text="{x:Bind Subtitle}"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap" />
+                            </StackPanel>
+                            <Button
+                                Grid.Column="2"
+                                AutomationProperties.Name="{x:Bind StarLabel, Mode=OneWay}"
+                                Click="StarButton_Click"
+                                Style="{StaticResource FlyoutIconButtonStyle}"
+                                ToolTipService.ToolTip="{x:Bind StarLabel, Mode=OneWay}">
+                                <FontIcon FontSize="16" Glyph="{x:Bind StarGlyph, Mode=OneWay}" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <ProgressRing
+                x:Name="LoadingRing"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsActive="False" />
+            <TextBlock
+                x:Name="EmptyText"
+                Margin="16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextAlignment="Center"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+        </Grid>
+
+        <TextBlock
+            x:Name="FootnoteText"
+            Grid.Row="6"
+            Margin="4,0"
+            Style="{StaticResource SecondaryCaptionTextStyle}"
+            Text="The free data plan lists up to 10 teams per league. Search by name to find any team." />
+    </Grid>
+</UserControl>

@@ -24,6 +24,27 @@ internal static class SettingsService
         set => Set(nameof(HasLaunchedBefore), value);
     }
 
+    /// <summary>The tray icon choice, as <c>TrayIconChoice.ToString()</c> ("sport:soccer", "team:133604").</summary>
+    public static string? TrayIcon
+    {
+        get => Get<string?>(nameof(TrayIcon), null);
+        set => Set(nameof(TrayIcon), value);
+    }
+
+    /// <summary>The sport last browsed in Find a team, by icon key.</summary>
+    public static string? LastSport
+    {
+        get => Get<string?>(nameof(LastSport), null);
+        set => Set(nameof(LastSport), value);
+    }
+
+    /// <summary>The league last browsed in Find a team.</summary>
+    public static string? LastLeagueId
+    {
+        get => Get<string?>(nameof(LastLeagueId), null);
+        set => Set(nameof(LastLeagueId), value);
+    }
+
     public static T? GetJson<T>(string key, JsonTypeInfo<T> typeInfo)
     {
         if (Get<string?>(key, null) is not { } json)
