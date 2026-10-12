@@ -66,3 +66,7 @@ Services/                   SportsData (shared client), Favorites, TrayIcon, Tea
 TraySport.Core/             API client, rate gate, parsing, formatting, ICO writer, catalog (no WinRT)
 TraySport.Tests/            MSTest over Core, with recorded API responses
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
