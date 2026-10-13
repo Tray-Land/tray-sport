@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10" IgnorableNamespaces="uap rescap systemai uap5" xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5">
-  <Identity Name="4A7C72B6-63FF-4EB7-88C1-7FB722BE7872" Publisher="CN=Joseph Finney, O=Joseph Finney, L=Milwaukee, S=Wisconsin, C=US, PostalCode=53212" Version="1.0.0.0" />
+  <Identity Name="4A7C72B6-63FF-4EB7-88C1-7FB722BE7872" Publisher="CN=Joseph Finney, O=Joseph Finney, L=Milwaukee, S=Wisconsin, C=US, PostalCode=53212" Version="1.0.1.0" />
   <Properties>
     <DisplayName>Tray Sport</DisplayName>
     <PublisherDisplayName>JoeFinApps</PublisherDisplayName>
