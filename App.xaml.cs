@@ -177,6 +177,7 @@ public partial class App : Application
         if (_flyout is null && !_isExiting)
         {
             TeamCatalogService.Unload();
+            SportsData.Client.PruneExpired();
             MemoryService.ReleaseIdle();
         }
     }

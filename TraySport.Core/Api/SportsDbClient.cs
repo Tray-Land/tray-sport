@@ -42,8 +42,8 @@ public sealed class SportsDbClient
     private readonly RequestGate _gate;
     private readonly TimeProvider _time;
     private readonly Lock _sync = new();
-    private readonly Dictionary<string, (string Json, DateTimeOffset FetchedAt)> _cache = [];
-    private readonly Dictionary<string, Task<string>> _inFlight = [];
+    private readonly Dictionary<string, (string Json, DateTimeOffset FetchedAt, TimeSpan Ttl)> _cache = [];
+    private readonly Dictionary<string, InFlight> _inFlight = [];
 
     public SportsDbClient(HttpClient http, string? apiKey = null, RequestGate? gate = null, TimeProvider? time = null)
     {
@@ -127,18 +127,26 @@ public sealed class SportsDbClient
         return SportsDbMapper.ParseTable(await GetAsync(query, TableTtl, force, ct));
     }
 
-    /// <summary>Drops everything cached, e.g. when the app goes idle.</summary>
-    public void ClearCache()
+    /// <summary>
+    /// Drops responses past their freshness time, for when the app goes idle. Fresh ones stay, so
+    /// reopening within a few minutes still costs no requests.
+    /// </summary>
+    public void PruneExpired()
     {
         lock (_sync)
         {
-            _cache.Clear();
+            DateTimeOffset now = _time.GetUtcNow();
+            foreach (string query in _cache.Where(e => now - e.Value.FetchedAt >= e.Value.Ttl).Select(e => e.Key).ToList())
+            {
+                _cache.Remove(query);
+            }
         }
     }
 
     private async Task<string> GetAsync(string query, TimeSpan ttl, bool force, CancellationToken ct)
     {
-        Task<string> fetch;
+        InFlight fetch;
+        bool start = false;
         lock (_sync)
         {
             DateTimeOffset now = _time.GetUtcNow();
@@ -149,58 +157,132 @@ public sealed class SportsDbClient
 
             if (!_inFlight.TryGetValue(query, out fetch!))
             {
-                fetch = FetchAsync(query);
+                fetch = new InFlight();
                 _inFlight[query] = fetch;
+                start = true;
             }
+
+            fetch.Waiters++;
         }
 
-        // The shared fetch isn't cancelled by one caller leaving; each caller stops waiting on its own token.
-        return await fetch.WaitAsync(ct).ConfigureAwait(false);
-    }
+        if (start)
+        {
+            _ = RunAsync(query, ttl, fetch);
+        }
 
-    private async Task<string> FetchAsync(string query)
-    {
         try
         {
-            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90));
-            await _gate.WaitAsync(timeout.Token).ConfigureAwait(false);
-
-            using HttpResponseMessage response = await _http.GetAsync(_baseUrl + query, timeout.Token).ConfigureAwait(false);
-            string body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
-
-            if (IsRateLimited(response.StatusCode, body))
-            {
-                DateTimeOffset retryAt = _time.GetUtcNow() + RateLimitPenalty;
-                _gate.BlockUntil(retryAt);
-                throw new SportsDbRateLimitedException(retryAt);
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            // Some lookups (e.g. a table the free plan doesn't cover) answer 200 with no body: no data, not an error.
-            if (string.IsNullOrWhiteSpace(body))
-            {
-                body = "{}";
-            }
-            else if (!body.TrimStart().StartsWith('{'))
-            {
-                throw new HttpRequestException("TheSportsDB returned an unexpected response.");
-            }
-
-            lock (_sync)
-            {
-                _cache[query] = (body, _time.GetUtcNow());
-            }
-
-            return body;
+            return await fetch.Completion.Task.WaitAsync(ct).ConfigureAwait(false);
         }
         finally
         {
+            // Identical requests share one fetch; it's cancelled only when every caller has left
+            // (the flyout hid), so a request queued behind the rate limit never fires for nobody.
+            bool abandoned;
             lock (_sync)
             {
-                _inFlight.Remove(query);
+                abandoned = --fetch.Waiters == 0 && !fetch.Completion.Task.IsCompleted;
+                if (abandoned && _inFlight.GetValueOrDefault(query) == fetch)
+                {
+                    _inFlight.Remove(query);
+                }
+            }
+
+            if (abandoned)
+            {
+                fetch.Cancel();
             }
         }
+    }
+
+    private async Task RunAsync(string query, TimeSpan ttl, InFlight fetch)
+    {
+        try
+        {
+            string body = await FetchAsync(query, fetch.Token).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _cache[query] = (body, _time.GetUtcNow(), ttl);
+                Forget(query, fetch);
+            }
+
+            fetch.Completion.TrySetResult(body);
+        }
+        catch (Exception ex)
+        {
+            lock (_sync)
+            {
+                Forget(query, fetch);
+            }
+
+            fetch.Completion.TrySetException(ex);
+        }
+        finally
+        {
+            fetch.Dispose();
+        }
+    }
+
+    private void Forget(string query, InFlight fetch)
+    {
+        if (_inFlight.GetValueOrDefault(query) == fetch)
+        {
+            _inFlight.Remove(query);
+        }
+    }
+
+    private async Task<string> FetchAsync(string query, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+
+        using HttpResponseMessage response = await _http.GetAsync(_baseUrl + query, ct).ConfigureAwait(false);
+        string body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        if (IsRateLimited(response.StatusCode, body))
+        {
+            DateTimeOffset retryAt = _time.GetUtcNow() + RateLimitPenalty;
+            _gate.BlockUntil(retryAt);
+            throw new SportsDbRateLimitedException(retryAt);
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        // Some lookups (e.g. a table the free plan doesn't cover) answer 200 with no body: no data, not an error.
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return "{}";
+        }
+
+        return body.TrimStart().StartsWith('{')
+            ? body
+            : throw new HttpRequestException("TheSportsDB returned an unexpected response.");
+    }
+
+    /// <summary>One shared request: its result, how many callers wait on it, and how to abandon it.</summary>
+    private sealed class InFlight : IDisposable
+    {
+        // A backstop for a request stuck behind the rate limit or a hung connection.
+        private readonly CancellationTokenSource _cts = new(TimeSpan.FromSeconds(90));
+
+        public TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Waiters { get; set; }
+
+        public CancellationToken Token => _cts.Token;
+
+        public void Cancel()
+        {
+            try
+            {
+                _cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Finished in the meantime.
+            }
+        }
+
+        public void Dispose() => _cts.Dispose();
     }
 
     /// <summary>Cloudflare answers an over-limit client with "error code: 1015", sometimes with a 200.</summary>

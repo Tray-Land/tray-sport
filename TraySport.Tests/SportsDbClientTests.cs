@@ -123,6 +123,88 @@ public sealed class SportsDbClientTests
         await Assert.ThrowsExactlyAsync<SportsDbRateLimitedException>(() => client.SearchTeamsAsync("Arsenal"));
     }
 
+    /// <summary>Holds every request until the test releases it, and records whether it was cancelled.</summary>
+    private sealed class PendingHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<bool> Finished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Release.Task.WaitAsync(cancellationToken);
+                Finished.TrySetResult(false);
+                return Ok("{}");
+            }
+            catch (OperationCanceledException)
+            {
+                Finished.TrySetResult(true);
+                throw;
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task SharedFetch_WhenEveryCallerLeaves_IsCancelled()
+    {
+        PendingHandler handler = new();
+        SportsDbClient client = new(new HttpClient(handler));
+        using CancellationTokenSource first = new();
+        using CancellationTokenSource second = new();
+
+        Task a = client.SearchTeamsAsync("Arsenal", first.Token);
+        Task b = client.SearchTeamsAsync("Arsenal", second.Token);
+        first.Cancel();
+        second.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => a);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => b);
+        Assert.IsTrue(await handler.Finished.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [TestMethod]
+    public async Task SharedFetch_WhenOneCallerStays_Completes()
+    {
+        PendingHandler handler = new();
+        SportsDbClient client = new(new HttpClient(handler));
+        using CancellationTokenSource leaving = new();
+
+        Task a = client.SearchTeamsAsync("Arsenal", leaving.Token);
+        Task<IReadOnlyList<TraySport.Core.Models.Team>> b = client.SearchTeamsAsync("Arsenal");
+        leaving.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => a);
+        handler.Release.SetResult();
+
+        Assert.AreEqual(0, (await b).Count);
+        Assert.IsFalse(await handler.Finished.Task);
+    }
+
+    private sealed class MovableTime(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [TestMethod]
+    public async Task PruneExpired_KeepsFreshResponses()
+    {
+        FakeHandler handler = new(_ => Ok("""{"teams":null}"""));
+        MovableTime time = new(new DateTimeOffset(2026, 10, 12, 14, 0, 0, TimeSpan.Zero));
+        SportsDbClient client = new(new HttpClient(handler), time: time);
+
+        await client.SearchTeamsAsync("Arsenal");            // 1 h freshness
+        await client.LastGameAsync("1");                     // 5 min freshness, 2 requests
+        time.Now += TimeSpan.FromMinutes(10);
+        client.PruneExpired();
+        await client.SearchTeamsAsync("Arsenal");
+        await client.LastGameAsync("1");
+
+        Assert.AreEqual(5, handler.Calls);
+    }
+
     [TestMethod]
     public void ApiKey_DefaultsToFreeTier()
     {
