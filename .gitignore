@@ -53,7 +53,9 @@ _ReSharper*/
 Generated\ Files/
 *_wpftmp.csproj
 
+# Signing certificates; the dev cert comes from `winapp cert generate`.
+*.pfx
+
 # The app's own API keys; copy OAuth.resw.sample to create it.
 OAuth.resw
-tools/.catalog-partial.json
-__pycache__/
+scripts/.catalog-partial.json

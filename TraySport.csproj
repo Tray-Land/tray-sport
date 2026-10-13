@@ -16,8 +16,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);CS0618</NoWarn>
-    <!-- Core and Tests are their own projects in subfolders; keep their sources out of this one. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);TraySport.Core\**;TraySport.Tests\**</DefaultItemExcludes>
+    <!-- Core and Tests are their own projects in subfolders, and scripts\ holds file-based apps; keep their sources out of this one. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);TraySport.Core\**;TraySport.Tests\**;scripts\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -34,7 +34,7 @@
     <!-- Sport glyphs for the tray icon picker: white for dark taskbars, "-dark" for light ones. -->
     <Content Include="Assets\Sports\*.ico" />
     <Content Include="Assets\Sports\*.svg" />
-    <!-- Every team in the browsable leagues; built by tools/build_team_catalog.py. -->
+    <!-- Every team in the browsable leagues; built by scripts/BuildTeamCatalog.cs. -->
     <Content Include="Assets\teams.json" />
   </ItemGroup>
   <ItemGroup>

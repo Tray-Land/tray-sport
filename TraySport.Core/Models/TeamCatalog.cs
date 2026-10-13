@@ -7,7 +7,7 @@ namespace TraySport.Core.Models;
 
 /// <summary>
 /// The teams of every browsable league, shipped with the app (Assets\teams.json, built by
-/// tools\build_team_catalog.py). The free API lists only 10 teams per league and returns a single,
+/// scripts\BuildTeamCatalog.cs). The free API lists only 10 teams per league and returns a single,
 /// often wrong, result per search; the catalog makes browsing complete and search forgiving.
 /// </summary>
 public sealed class TeamCatalog
