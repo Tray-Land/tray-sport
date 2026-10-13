@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using TraySport.Core.Models;
 
@@ -33,6 +34,9 @@ public sealed class SportsDbClient
 
     private static readonly TimeSpan RateLimitPenalty = TimeSpan.FromSeconds(65);
 
+    /// <summary>How many UTC days (starting today) the stale-next fallback scans; covers playoff off-days.</summary>
+    private const int NextGameSearchDays = 3;
+
     private readonly HttpClient _http;
     private readonly string _baseUrl;
     private readonly RequestGate _gate;
@@ -62,13 +66,52 @@ public sealed class SportsDbClient
     public async Task<Team?> LookupTeamAsync(string teamId, CancellationToken ct = default) =>
         SportsDbMapper.ParseTeams(await GetAsync($"lookupteam.php?id={Uri.EscapeDataString(teamId)}", TeamTtl, false, ct)).FirstOrDefault();
 
-    public async Task<Game?> LastGameAsync(string teamId, bool force = false, CancellationToken ct = default) =>
-        SportsDbMapper.ParseGames(await GetAsync($"eventslast.php?id={Uri.EscapeDataString(teamId)}", ScheduleTtl, force, ct))
-            .OrderByDescending(g => g.StartsAt).FirstOrDefault();
+    /// <summary>
+    /// The latest finished game. The free eventslast can lag behind, so a finished game that
+    /// eventsnext still lists counts too (that call is shared with <see cref="NextGameAsync"/>).
+    /// </summary>
+    public async Task<Game?> LastGameAsync(string teamId, bool force = false, CancellationToken ct = default)
+    {
+        IReadOnlyList<Game> past = await TeamEventsAsync("eventslast.php", teamId, force, ct);
+        IReadOnlyList<Game> upcoming = await TeamEventsAsync("eventsnext.php", teamId, force, ct);
+        return GameSelector.PickLast(past, upcoming, teamId);
+    }
 
-    public async Task<Game?> NextGameAsync(string teamId, bool force = false, CancellationToken ct = default) =>
-        SportsDbMapper.ParseGames(await GetAsync($"eventsnext.php?id={Uri.EscapeDataString(teamId)}", ScheduleTtl, force, ct))
-            .OrderBy(g => g.StartsAt).FirstOrDefault();
+    /// <summary>
+    /// The next game that hasn't been played. The free eventsnext returns one game, and it can be a
+    /// finished or long-past one; then the league's schedule for the coming days is searched instead.
+    /// </summary>
+    public async Task<Game?> NextGameAsync(string teamId, bool force = false, CancellationToken ct = default)
+    {
+        IReadOnlyList<Game> upcoming = await TeamEventsAsync("eventsnext.php", teamId, force, ct);
+        DateTimeOffset now = _time.GetUtcNow();
+        if (GameSelector.PickNext(upcoming, teamId, now) is { } next)
+        {
+            return next;
+        }
+
+        // Only a stale row can name the league to search; an empty answer (off-season) ends here.
+        if (upcoming.FirstOrDefault(g => GameSelector.InvolvesTeam(g, teamId) && g.LeagueId is not null)?.LeagueId is not { } leagueId)
+        {
+            return null;
+        }
+
+        for (int day = 0; day < NextGameSearchDays; day++)
+        {
+            string date = now.AddDays(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            IReadOnlyList<Game> games = SportsDbMapper.ParseGames(
+                await GetAsync($"eventsday.php?d={date}&l={Uri.EscapeDataString(leagueId)}", ScheduleTtl, force, ct));
+            if (GameSelector.PickNext(games, teamId, now) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<IReadOnlyList<Game>> TeamEventsAsync(string endpoint, string teamId, bool force, CancellationToken ct) =>
+        SportsDbMapper.ParseGames(await GetAsync($"{endpoint}?id={Uri.EscapeDataString(teamId)}", ScheduleTtl, force, ct));
 
     public async Task<League?> LookupLeagueAsync(string leagueId, CancellationToken ct = default) =>
         SportsDbMapper.ParseLeagues(await GetAsync($"lookupleague.php?id={Uri.EscapeDataString(leagueId)}", TeamTtl, false, ct)).FirstOrDefault();
