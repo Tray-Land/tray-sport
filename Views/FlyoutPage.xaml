@@ -43,7 +43,11 @@
                 Click="RefreshButton_Click"
                 Style="{StaticResource FlyoutIconButtonStyle}"
                 ToolTipService.ToolTip="Refresh">
-                <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                <!--  Spins while a refresh runs; this page's loading indicator.  -->
+                <FontIcon
+                    x:Name="RefreshIcon"
+                    FontSize="14"
+                    Glyph="&#xE72C;" />
             </Button>
             <Button
                 Grid.Column="3"
@@ -111,10 +115,44 @@
                                     TextWrapping="NoWrap" />
                             </StackPanel>
 
+                            <!--  Skeleton: shaped like the last/next rows, pulsing in a ripple down the list until the first data lands  -->
                             <StackPanel
                                 Grid.Row="1"
                                 Grid.ColumnSpan="2"
-                                Spacing="6">
+                                local:Motion.FadeOnHide="True"
+                                local:Motion.PulseIndex="{x:Bind Stagger}"
+                                AutomationProperties.AccessibilityView="Raw"
+                                Spacing="6"
+                                Visibility="{x:Bind SkeletonVisibility, Mode=OneWay}">
+                                <Grid Height="28" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource SkeletonBlockStyle}" Width="20" Height="20" CornerRadius="4" HorizontalAlignment="Center" />
+                                    <Border Grid.Column="1" Style="{StaticResource SkeletonBlockStyle}" Width="148" />
+                                    <Border Grid.Column="2" Style="{StaticResource SkeletonBlockStyle}" Width="72" Height="10" Margin="0,0,32,0" />
+                                </Grid>
+                                <Grid Height="20" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource SkeletonBlockStyle}" Width="26" Height="10" HorizontalAlignment="Center" />
+                                    <Border Grid.Column="1" Style="{StaticResource SkeletonBlockStyle}" Width="116" />
+                                    <Border Grid.Column="2" Style="{StaticResource SkeletonBlockStyle}" Width="96" Height="10" />
+                                </Grid>
+                            </StackPanel>
+
+                            <!--  Games: fade and rise into place when the first data arrives  -->
+                            <StackPanel
+                                Grid.Row="1"
+                                Grid.ColumnSpan="2"
+                                local:Motion.RevealOnShow="True"
+                                Spacing="6"
+                                Visibility="{x:Bind ContentVisibility, Mode=OneWay}">
                                 <!--  Last result  -->
                                 <Grid ColumnSpacing="8" Visibility="{x:Bind LastVisibility, Mode=OneWay}">
                                     <Grid.ColumnDefinitions>
@@ -261,12 +299,6 @@
                 VerticalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}" />
-            <ProgressRing
-                x:Name="LoadingRing"
-                Width="16"
-                Height="16"
-                HorizontalAlignment="Right"
-                IsActive="False" />
         </Grid>
     </Grid>
 </Page>

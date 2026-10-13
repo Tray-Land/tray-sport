@@ -55,6 +55,15 @@
                 <Setter Property="CornerRadius" Value="4" />
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
+
+            <!--  A bar of loading-skeleton placeholder; theme brush so it reads on light and dark cards.  -->
+            <Style x:Key="SkeletonBlockStyle" TargetType="Border">
+                <Setter Property="Height" Value="12" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Background" Value="{ThemeResource ControlStrongFillColorDisabledBrush}" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

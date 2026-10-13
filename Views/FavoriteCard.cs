@@ -13,10 +13,21 @@ public sealed partial class FavoriteCard(FavoriteTeam team) : INotifyPropertyCha
     private Game? _last;
     private Game? _next;
     private bool _loaded;
+    private bool _waiting;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public FavoriteTeam Team { get; } = team;
+
+    /// <summary>The card's place in the list when it was created; offsets its loading pulse.</summary>
+    public int Stagger { get; init; }
+
+    /// <summary>True once the first data arrived; later refreshes update it in place.</summary>
+    public bool IsLoaded => _loaded;
+
+    public Visibility SkeletonVisibility => Show(_waiting && !_loaded);
+
+    public Visibility ContentVisibility => Show(_loaded);
 
     public string Name => Team.Name;
 
@@ -61,6 +72,11 @@ public sealed partial class FavoriteCard(FavoriteTeam team) : INotifyPropertyCha
         get
         {
             string summary = Team.Name;
+            if (_waiting && !_loaded)
+            {
+                summary += ", loading";
+            }
+
             if (_last is not null)
             {
                 summary += $", last game {GameFormatter.OutcomeLetter(Outcome)} {LastScore} {LastMatchup}, {LastWhen}";
@@ -83,6 +99,17 @@ public sealed partial class FavoriteCard(FavoriteTeam team) : INotifyPropertyCha
         _next = next;
         _loaded = true;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty)); // every derived property
+    }
+
+    /// <summary>A refresh is fetching this card's data: show the skeleton until it lands.</summary>
+    public void SetWaiting(bool waiting)
+    {
+        if (_waiting != waiting)
+        {
+            _waiting = waiting;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SkeletonVisibility)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AccessibleSummary)));
+        }
     }
 
     private static string When(Game game) => GameFormatter.When(

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Net.Http;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using TraySport.Core.Api;
@@ -20,9 +21,17 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
     // Scores change a few times a day; the API's own cache is about as fresh as this.
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
 
+    // Cards that get their first data together reveal this far apart, top to bottom.
+    private static readonly TimeSpan RevealStagger = TimeSpan.FromMilliseconds(70);
+
+    // A manual refresh flips the cards over this far apart, top to bottom.
+    private static readonly TimeSpan FlipStagger = TimeSpan.FromMilliseconds(90);
+
     private readonly TrayFlyoutWindow _host;
     private readonly ForegroundPoller _poller;
     private readonly ObservableCollection<FavoriteCard> _cards = [];
+    private bool _forceNextRefresh;
+    private DateTime _nextRevealAtUtc = DateTime.MinValue;
 
     internal FlyoutPage(TrayFlyoutWindow host)
     {
@@ -70,7 +79,7 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
                 }
                 else
                 {
-                    _cards.Add(new FavoriteCard(team));
+                    _cards.Add(new FavoriteCard(team) { Stagger = _cards.Count });
                     added = true;
                 }
             }
@@ -97,7 +106,17 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
             return;
         }
 
-        LoadingRing.IsActive = true;
+        // The refresh button skips the 5-minute schedule cache (but not the 30-second floor).
+        bool force = _forceNextRefresh;
+        _forceNextRefresh = false;
+
+        List<FavoriteCard> cards = [.. _cards];
+        SetLoading(true);
+        foreach (FavoriteCard card in cards)
+        {
+            card.SetWaiting(true); // Only cards with no data yet show the skeleton.
+        }
+
         try
         {
             SportsDbClient client = SportsData.Client;
@@ -106,14 +125,21 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
 
             // One card at a time, top first, so the most important team fills in first and a
             // rate-limit wait delays the bottom of the list, not all of it.
-            foreach (FavoriteCard card in _cards.ToList())
+            foreach (FavoriteCard card in cards)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    Task<Game?> last = client.LastGameAsync(card.Team.Id, ct: cancellationToken);
-                    Task<Game?> next = client.NextGameAsync(card.Team.Id, ct: cancellationToken);
-                    card.Update(await last, await next);
+                    Task<Game?> last = client.LastGameAsync(card.Team.Id, force, cancellationToken);
+                    Task<Game?> next = client.NextGameAsync(card.Team.Id, force, cancellationToken);
+                    Game? lastGame = await last;
+                    Game? nextGame = await next;
+                    if (!card.IsLoaded)
+                    {
+                        await WaitForRevealTurnAsync(cancellationToken);
+                    }
+
+                    card.Update(lastGame, nextGame);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
@@ -124,19 +150,81 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
 
             UpdateTrayTooltip();
 
-            // Some cards updated: show what we have and let the poller retry the rest on schedule.
             if (failures == _cards.Count && firstError is not null)
             {
                 throw firstError;
             }
 
-            StatusBar.IsOpen = false;
+            // Some cards updated: show what we have, say why the rest are blank or old, and let
+            // the poller retry them on schedule.
+            if (firstError is not null)
+            {
+                ShowError(firstError, partial: true);
+            }
+            else
+            {
+                StatusBar.IsOpen = false;
+            }
+
             UpdatedText.Text = $"Updated {DateTime.Now:t}";
         }
         finally
         {
-            LoadingRing.IsActive = false;
+            foreach (FavoriteCard card in cards)
+            {
+                card.SetWaiting(false);
+            }
+
+            SetLoading(false);
         }
+    }
+
+    /// <summary>
+    /// Spaces out first-time reveals: cards whose data comes from the cache all at once land one
+    /// after another, top to bottom, while cards that trickle in from the network land right away.
+    /// </summary>
+    private async Task WaitForRevealTurnAsync(CancellationToken cancellationToken)
+    {
+        if (!Motion.IsEnabled)
+        {
+            return;
+        }
+
+        DateTime now = DateTime.UtcNow;
+        TimeSpan wait = _nextRevealAtUtc - now;
+        _nextRevealAtUtc = (wait > TimeSpan.Zero ? _nextRevealAtUtc : now) + RevealStagger;
+        if (wait > TimeSpan.Zero)
+        {
+            await Task.Delay(wait, cancellationToken);
+        }
+    }
+
+    /// <summary>A manual refresh flips each card over in turn, top to bottom, so it's obvious it's happening.</summary>
+    private void FlipCards()
+    {
+        int visible = 0;
+        foreach (FavoriteCard card in _cards)
+        {
+            // Only realized (on-screen or near it) cards have a container to flip.
+            if (FavoritesList.ContainerFromItem(card) is ListViewItem { ContentTemplateRoot: UIElement root })
+            {
+                Motion.Flip(root, FlipStagger * visible++);
+            }
+        }
+    }
+
+    private void SetLoading(bool loading)
+    {
+        if (loading)
+        {
+            Motion.StartSpin(RefreshIcon);
+        }
+        else
+        {
+            Motion.StopSpin(RefreshIcon);
+        }
+
+        AutomationProperties.SetName(RefreshButton, loading ? "Refreshing" : "Refresh");
     }
 
     private void UpdateTrayTooltip()
@@ -150,10 +238,15 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
         App.Current.SetTrayStatus(status.Length == 0 ? null : status);
     }
 
-    private void ShowError(Exception ex)
+    private void ShowError(Exception ex, bool partial = false)
     {
         bool online = ConnectivityService.IsInternetAvailable;
-        if (ex is SportsDbRateLimitedException)
+        if (partial && ex is not SportsDbRateLimitedException)
+        {
+            StatusBar.Title = "Some teams didn't update";
+            StatusBar.Message = "Retrying shortly.";
+        }
+        else if (ex is SportsDbRateLimitedException)
         {
             StatusBar.Title = "Too many requests";
             StatusBar.Message = "TheSportsDB's free plan allows 30 a minute. This will update shortly.";
@@ -251,33 +344,14 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
 
     private void AddButton_Click(object sender, RoutedEventArgs e) => _host.ShowFindTeam();
 
-    private void RefreshButton_Click(object sender, RoutedEventArgs e) => _ = RefreshForcedAsync();
-
-    private async Task RefreshForcedAsync()
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        // The refresh button skips the 5-minute schedule cache (but not the 30-second floor).
-        LoadingRing.IsActive = true;
-        try
-        {
-            foreach (FavoriteCard card in _cards.ToList())
-            {
-                Task<Game?> last = SportsData.Client.LastGameAsync(card.Team.Id, force: true);
-                Task<Game?> next = SportsData.Client.NextGameAsync(card.Team.Id, force: true);
-                card.Update(await last, await next);
-            }
-
-            StatusBar.IsOpen = false;
-            UpdatedText.Text = $"Updated {DateTime.Now:t}";
-            UpdateTrayTooltip();
-        }
-        catch (Exception ex)
-        {
-            ShowError(ex);
-        }
-        finally
-        {
-            LoadingRing.IsActive = false;
-        }
+        // Through the poller, so it's cancelled on hide and never overlaps a scheduled refresh. If
+        // one is already running, that refresh is the answer and the flag is dropped unused.
+        FlipCards();
+        _forceNextRefresh = true;
+        await _poller.RefreshNowAsync();
+        _forceNextRefresh = false;
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => _host.ShowSettings();

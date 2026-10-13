@@ -180,8 +180,9 @@ public sealed partial class TrayFlyoutWindow : WindowEx
 
     public void GoHome()
     {
-        while (GoBack())
+        if (PopToHome() && _isPopupVisible)
         {
+            _page.OnShown();
         }
     }
 
@@ -189,7 +190,7 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     {
         if (CurrentView is not SettingsView)
         {
-            GoHome();
+            PopToHome();
             Navigate(new SettingsView(this));
         }
     }
@@ -198,9 +199,32 @@ public sealed partial class TrayFlyoutWindow : WindowEx
     {
         if (CurrentView is not FindTeamView)
         {
-            GoHome();
+            PopToHome();
             Navigate(new FindTeamView(this));
         }
+    }
+
+    /// <summary>
+    /// Drops every page above the favorites without showing the ones in between (each would start
+    /// loading only to be cancelled). False when already home. The caller decides whether to show.
+    /// </summary>
+    private bool PopToHome()
+    {
+        if (_backStack.Count == 0)
+        {
+            return false;
+        }
+
+        FrameworkElement leaving = CurrentView;
+        (leaving as IFlyoutView)?.OnHidden();
+        (leaving as IDisposable)?.Dispose();
+        while (_backStack.Count > 1)
+        {
+            (_backStack.Pop() as IDisposable)?.Dispose(); // Already hidden when it was navigated away from.
+        }
+
+        PageHost.Content = _backStack.Pop();
+        return true;
     }
 
     public void ShowTeam(TraySport.Core.Models.FavoriteTeam team) => Navigate(new TeamView(this, team));
