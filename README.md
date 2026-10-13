@@ -31,8 +31,9 @@ plan's limits shape a few things:
 | A league lists only 10 teams | `Assets\teams.json` bundles every team in the browsable leagues. |
 | A name search returns one result | Search matches the bundled catalog as you type ("lakers" finds Los Angeles). Pressing Enter also adds TheSportsDB's single best match from any league. |
 | One last game and one next game per team | Favorites and team pages show exactly one of each. |
+| The one "next" game can be stale (already final, or long past) | If `eventsnext` returns a finished game, the app searches the team's league with `eventsday` for today and the next 2 days (UTC), up to 3 extra requests shared by every team in that league. The finished game counts as the last result when it is newer than `eventslast`. |
 | Tables return the top 5 | Standings say so, and say when your team is below the cut. |
-| Favorites refresh with 2 requests each | Favorites are capped at 10. |
+| Favorites refresh with 2 requests each | Favorites are capped at 10. Normally 2 requests each, more only when a team's next game is stale. |
 
 A premium key in `OAuth.resw` lifts the caps with no code changes, apart from the notes in the UI that mention the free plan.
 
