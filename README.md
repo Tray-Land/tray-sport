@@ -21,9 +21,8 @@ Data comes from [TheSportsDB](https://www.thesportsdb.com).
 
 ## Install
 
-Download the `.msix` for your PC (x64 or ARM64) from the latest [GitHub release](../../releases) and open it. The
-package is signed with the publisher's certificate; if Windows says it can't verify the publisher, install that
-certificate into **Local Machine > Trusted People** first.
+Download [TraySport.appinstaller](https://github.com/Tray-Land/tray-sport/releases/latest/download/TraySport.appinstaller)
+and open it. Windows installs the right version for your PC (x64 or ARM64) and keeps it updated.
 
 Requires Windows 10 version 1809 or later, or Windows 11, on x64 or ARM64.
 
@@ -58,7 +57,9 @@ dotnet test TraySport.Tests
 ```
 
 To publish a release, bump `Identity/@Version` in `Package.appxmanifest`, then run `build-msix-for-gh.ps1`. It
-builds and signs x64 and ARM64 packages and creates a draft GitHub release.
+builds and signs an x64 and ARM64 `.msixbundle` with an auto-updating `.appinstaller` feed and creates a draft
+GitHub release. After publishing the draft (without changing its tag), run `.\build-msix-for-gh.ps1 -VerifyPublished`
+to check the live feed. `-SkipRelease -NoSign` builds and validates the bundle without signing or publishing.
 
 ## TheSportsDB free plan
 
