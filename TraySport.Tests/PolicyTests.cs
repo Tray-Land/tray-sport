@@ -96,6 +96,83 @@ public sealed class FavoritesPolicyTests
 }
 
 [TestClass]
+public sealed class SnoozePolicyTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+
+    private static FavoriteTeam Fav() => new("10", "Lakers", "Basketball", null, null, null);
+
+    private static Game GameAt(DateTimeOffset start) => new("1", "Lakers", "Warriors", "10", "20", 100, 90, start, true);
+
+    [TestMethod]
+    public void ShouldAutoSnooze_AWeekAfterTheLastGameWithNothingNext()
+    {
+        Assert.IsTrue(SnoozePolicy.ShouldAutoSnooze(Fav(), GameAt(Now.AddDays(-7)), null, Now));
+        Assert.IsFalse(SnoozePolicy.ShouldAutoSnooze(Fav(), GameAt(Now.AddDays(-6)), null, Now));
+    }
+
+    [TestMethod]
+    public void ShouldAutoSnooze_NeverWithANextGameOrWithoutALastGame()
+    {
+        Game old = GameAt(Now.AddDays(-30));
+
+        Assert.IsFalse(SnoozePolicy.ShouldAutoSnooze(Fav(), old, GameAt(Now.AddDays(2)), Now));
+        Assert.IsFalse(SnoozePolicy.ShouldAutoSnooze(Fav(), null, null, Now));
+        Assert.IsFalse(SnoozePolicy.ShouldAutoSnooze(Fav() with { SnoozedAt = Now }, old, null, Now));
+    }
+
+    [TestMethod]
+    public void ShouldAutoSnooze_AfterAManualWake_WaitsAFullQuietPeriod()
+    {
+        Game old = GameAt(Now.AddDays(-30));
+        FavoriteTeam woken = Fav() with { WokenAt = Now.AddDays(-2) };
+
+        Assert.IsFalse(SnoozePolicy.ShouldAutoSnooze(woken, old, null, Now));
+        Assert.IsTrue(SnoozePolicy.ShouldAutoSnooze(woken, old, null, Now.AddDays(5)));
+    }
+
+    [TestMethod]
+    public void IsProbeDue_OncePerInterval()
+    {
+        FavoriteTeam snoozed = Fav() with { SnoozedAt = Now.AddDays(-10), ProbedAt = Now.AddDays(-3) };
+
+        Assert.IsFalse(SnoozePolicy.IsProbeDue(snoozed, Now));
+        Assert.IsTrue(SnoozePolicy.IsProbeDue(snoozed, Now.AddDays(4)));
+        Assert.IsFalse(SnoozePolicy.IsProbeDue(Fav(), Now.AddDays(100)));
+    }
+
+    [TestMethod]
+    public void Snooze_Probe_And_Wake_UpdateTheTeam()
+    {
+        IReadOnlyList<FavoriteTeam> list = [Fav()];
+
+        list = FavoritesPolicy.Snooze(list, "10", Now);
+        Assert.IsTrue(list[0].IsSnoozed);
+        Assert.AreSame(list, FavoritesPolicy.Snooze(list, "10", Now.AddDays(1)));
+
+        list = FavoritesPolicy.MarkProbed(list, "10", Now.AddDays(7));
+        Assert.AreEqual(Now.AddDays(7), list[0].ProbedAt);
+
+        list = FavoritesPolicy.Wake(list, "10", Now.AddDays(8));
+        Assert.IsFalse(list[0].IsSnoozed);
+        Assert.AreEqual(Now.AddDays(8), list[0].WokenAt);
+        Assert.AreSame(list, FavoritesPolicy.Wake(list, "10", Now.AddDays(9)));
+        Assert.AreSame(list, FavoritesPolicy.Snooze(list, "missing", Now));
+    }
+
+    [TestMethod]
+    public void Add_KeepsSnoozeStateWhenRefreshingDetails()
+    {
+        IReadOnlyList<FavoriteTeam> list = FavoritesPolicy.Snooze([Fav()], "10", Now);
+
+        list = FavoritesPolicy.Add(list, Fav() with { Name = "Los Angeles Lakers" });
+
+        Assert.AreEqual("Los Angeles Lakers", list[0].Name);
+        Assert.IsTrue(list[0].IsSnoozed);
+    }
+}
+
+[TestClass]
 public sealed class TrayIconChoiceTests
 {
     [TestMethod]

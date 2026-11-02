@@ -35,6 +35,12 @@ internal static class FavoritesService
 
     public static void Remove(string teamId) => Save(FavoritesPolicy.Remove(Items, teamId));
 
+    public static void Snooze(string teamId) => Save(FavoritesPolicy.Snooze(Items, teamId, DateTimeOffset.UtcNow));
+
+    public static void Wake(string teamId) => Save(FavoritesPolicy.Wake(Items, teamId, DateTimeOffset.UtcNow));
+
+    public static void MarkProbed(string teamId) => Save(FavoritesPolicy.MarkProbed(Items, teamId, DateTimeOffset.UtcNow));
+
     public static void Move(string teamId, int delta) => Save(FavoritesPolicy.Move(Items, teamId, delta));
 
     private static void Save(IReadOnlyList<FavoriteTeam> items)
