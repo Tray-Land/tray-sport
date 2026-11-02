@@ -64,7 +64,8 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
     /// <summary>Matches the cards to the favorites list, keeping loaded data. True if a new team appeared.</summary>
     private bool SyncCards()
     {
-        IReadOnlyList<FavoriteTeam> favorites = FavoritesService.Items;
+        // Snoozed teams have no card; they wait behind the footer's snooze button.
+        List<FavoriteTeam> favorites = [.. FavoritesService.Items.Where(t => !t.IsSnoozed)];
         Dictionary<string, FavoriteCard> existing = _cards.ToDictionary(c => c.Team.Id);
         bool added = false;
 
@@ -85,10 +86,18 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
             }
         }
 
+        int snoozed = FavoritesService.Items.Count - favorites.Count;
+        SnoozedButton.Visibility = snoozed > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(SnoozedButton, $"Snoozed teams, {snoozed}");
+
         bool empty = favorites.Count == 0;
         EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         FavoritesList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
-        RefreshButton.IsEnabled = !empty;
+        RefreshButton.IsEnabled = FavoritesService.Items.Count > 0;
+        EmptyTitle.Text = snoozed > 0 ? "All your teams are snoozed" : "No favorite teams yet";
+        EmptyBody.Text = snoozed > 0
+            ? "They wake on their own when their next game is scheduled."
+            : "Star a team to see its latest score and next game here.";
         if (empty)
         {
             StatusBar.IsOpen = false;
@@ -101,7 +110,7 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
 
     private async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        if (_cards.Count == 0)
+        if (_cards.Count == 0 && !FavoritesService.Items.Any(t => t.IsSnoozed))
         {
             return;
         }
@@ -140,6 +149,13 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
                     }
 
                     card.Update(lastGame, nextGame);
+
+                    // A week past the last game with nothing scheduled: the season is over.
+                    if (SnoozePolicy.ShouldAutoSnooze(card.Team, lastGame, nextGame, DateTimeOffset.UtcNow))
+                    {
+                        FavoritesService.Snooze(card.Team.Id);
+                        SyncCards();
+                    }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
@@ -148,9 +164,28 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
                 }
             }
 
+            // Off-season teams: no refresh, only the occasional look for the next game.
+            foreach (FavoriteTeam team in FavoritesService.Items.Where(t => t.IsSnoozed).ToList())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!force && !SnoozePolicy.IsProbeDue(team, DateTimeOffset.UtcNow))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await ProbeSnoozedAsync(team.Id, force, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    firstError ??= ex;
+                }
+            }
+
             UpdateTrayTooltip();
 
-            if (failures == _cards.Count && firstError is not null)
+            if (failures == cards.Count && firstError is not null)
             {
                 throw firstError;
             }
@@ -177,6 +212,23 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
 
             SetLoading(false);
         }
+    }
+
+    /// <summary>Looks for a snoozed team's next game; a found game wakes it and shows its card.</summary>
+    private async Task ProbeSnoozedAsync(string teamId, bool force, CancellationToken cancellationToken)
+    {
+        SportsDbClient client = SportsData.Client;
+        Game? next = await client.NextGameAsync(teamId, force, cancellationToken);
+        if (next is null)
+        {
+            FavoritesService.MarkProbed(teamId);
+            return;
+        }
+
+        Game? last = await client.LastGameAsync(teamId, force, cancellationToken);
+        FavoritesService.Wake(teamId);
+        SyncCards();
+        _cards.FirstOrDefault(c => c.Team.Id == teamId)?.Update(last, next);
     }
 
     /// <summary>
@@ -296,6 +348,13 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
         down.Click += (_, _) => MoveCard(teamId, 1);
         MenuFlyoutItem icon = new() { Text = "Use logo as tray icon", Icon = new FontIcon { Glyph = "" } };
         icon.Click += async (_, _) => await UseAsTrayIconAsync(teamId);
+        MenuFlyoutItem snooze = new() { Text = "Snooze for the off-season", Icon = new FontIcon { Glyph = "" } };
+        snooze.Click += (_, _) =>
+        {
+            FavoritesService.Snooze(teamId);
+            SyncCards();
+            UpdateTrayTooltip();
+        };
         MenuFlyoutItem remove = new() { Text = "Remove from favorites", Icon = new FontIcon { Glyph = "" } };
         remove.Click += (_, _) =>
         {
@@ -309,6 +368,7 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
         menu.Items.Add(down);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(icon);
+        menu.Items.Add(snooze);
         menu.Items.Add(remove);
 
         if (args.TryGetPosition(sender, out Windows.Foundation.Point point))
@@ -319,6 +379,54 @@ public sealed partial class FlyoutPage : Page, IFlyoutView, IDisposable
         {
             menu.ShowAt((FrameworkElement)sender);
         }
+    }
+
+    /// <summary>The footer's snooze button: lists the off-season teams, each with a Wake button.</summary>
+    private void SnoozedButton_Click(object sender, RoutedEventArgs e)
+    {
+        StackPanel panel = new() { Spacing = 8, Width = 280 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Snoozed for the off-season",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "These make no requests until one checks weekly and finds a game.",
+            Style = (Style)Application.Current.Resources["SecondaryCaptionTextStyle"],
+            TextWrapping = TextWrapping.Wrap,
+        });
+
+        Flyout flyout = new() { Content = panel };
+        foreach (FavoriteTeam team in FavoritesService.Items.Where(t => t.IsSnoozed))
+        {
+            Grid row = new() { ColumnSpacing = 8 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            row.Children.Add(new Image { Width = 28, Height = 28, Source = Images.Badge(team.TinyBadgeUrl, 28) });
+            TextBlock name = new() { Text = team.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            Grid.SetColumn(name, 1);
+            row.Children.Add(name);
+
+            Button wake = new() { Content = "Wake" };
+            AutomationProperties.SetName(wake, $"Wake {team.Name}");
+            string teamId = team.Id;
+            wake.Click += (_, _) =>
+            {
+                flyout.Hide();
+                FavoritesService.Wake(teamId);
+                SyncCards();
+                _ = _poller.RefreshNowAsync(); // The woken card has no data yet.
+            };
+            Grid.SetColumn(wake, 2);
+            row.Children.Add(wake);
+
+            panel.Children.Add(row);
+        }
+
+        flyout.ShowAt((FrameworkElement)sender);
     }
 
     private void MoveCard(string teamId, int delta)

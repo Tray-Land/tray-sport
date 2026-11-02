@@ -75,6 +75,7 @@ plan's limits shape a few things:
 | The one "next" game can be stale (already final, or long past) | If `eventsnext` returns a finished game, the app searches the team's league with `eventsday` for today and the next 2 days (UTC), up to 3 extra requests shared by every team in that league. The finished game counts as the last result when it is newer than `eventslast`. |
 | Tables return the top 5 | Standings say so, and say when your team is below the cut. |
 | Favorites refresh with 2 requests each | Favorites are capped at 10. Normally 2 requests each, more only when a team's next game is stale. |
+| Off-season teams would waste requests | A team with no next game a week after its last one is snoozed automatically (right-click a card to snooze by hand). Snoozed teams leave the list and wait behind the moon button at the bottom right, which has a Wake button for each. A snoozed team makes no refresh requests; while the flyout is open it checks for a next game once a week (1 request) and wakes when one appears. |
 
 A premium key in `OAuth.resw` lifts the caps with no code changes, apart from the notes in the UI that mention the free plan.
 

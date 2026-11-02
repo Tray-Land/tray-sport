@@ -275,10 +275,12 @@
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 Glyph="&#xE734;" />
             <TextBlock
+                x:Name="EmptyTitle"
                 HorizontalAlignment="Center"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
                 Text="No favorite teams yet" />
             <TextBlock
+                x:Name="EmptyBody"
                 HorizontalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="Star a team to see its latest score and next game here."
@@ -299,6 +301,17 @@
                 VerticalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}" />
+            <!--  Snoozed (off-season) teams live here; the button shows only while there are some  -->
+            <Button
+                x:Name="SnoozedButton"
+                HorizontalAlignment="Right"
+                AutomationProperties.Name="Snoozed teams"
+                Click="SnoozedButton_Click"
+                Style="{StaticResource FlyoutIconButtonStyle}"
+                ToolTipService.ToolTip="Snoozed teams"
+                Visibility="Collapsed">
+                <FontIcon FontSize="14" Glyph="&#xE708;" />
+            </Button>
         </Grid>
     </Grid>
 </Page>
