@@ -21,6 +21,8 @@ Data comes from [TheSportsDB](https://www.thesportsdb.com).
 
 ## Install
 
+[<img src="docs/MSIX.svg" alt="Install TraySport (MSIX)" width="212">](https://github.com/Tray-Land/tray-sport/releases/latest/download/TraySport.appinstaller)
+
 Download [TraySport.appinstaller](https://github.com/Tray-Land/tray-sport/releases/latest/download/TraySport.appinstaller)
 and open it. Windows installs the right version for your PC (x64 or ARM64) and keeps it updated.
 
